@@ -1,13 +1,9 @@
 # Creating the requirements.txt file with all relevant dependencies
-requirements = """
+
 streamlit==1.40.1
 pandas==2.0.3
 numpy==1.23.5
-re==2.2.1
 scikit-learn==1.3.0
 joblib==1.2.0
 plotly==5.9.0
-"""
-
-# with open("/mnt/data/requirements.txt", "w") as f:
-#     f.write(requirements.strip())
+textblob==0.18.0
