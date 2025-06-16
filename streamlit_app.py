@@ -76,16 +76,17 @@ if page == "📖 Log Entry":
 
         predicted_pain_level, predicted_emotion = predict_pain_emotion(user_input)
         
-        st.success(f"Predicted Pain Level: {round(predicted_pain_level)}")
-        st.markdown(f"**You Reported:** {emotion} | **Model Suggests:** {predicted_emotion}")
-        st.markdown(f"Based on your notes, the system noticed patterns similar to people reporting *{predicted_emotion}* or *Moderate–High Pain*.")
+        st.markdown(f"**You Reported:** {emotion} | **System Noticed Patterns Similar To:** *{predicted_emotion}*")
+        st.markdown(f"Based on your notes, the system also identified patterns often associated with *pain levels around {round(predicted_pain_level)}*.")
 
         with st.expander("What does this mean?"):
             st.markdown("""
-            These outputs are **suggestions based on patterns in your input**.  
-            They are not medical diagnoses and should not replace your lived experience or clinical judgment.  
-            Consider discussing these entries with your healthcare provider.
+            These outputs are **reflective suggestions based on common patterns in similar entries**.  
+            They are **not medical advice** and should **not replace your own judgment or your healthcare provider’s input**.  
+            Sharing these results during your next visit may help guide deeper conversation.
             """)
+            
+        st.info("This is your record. You decide what matters most.")
 
         log_entry = {
             "timestamp": pd.Timestamp.now(),
