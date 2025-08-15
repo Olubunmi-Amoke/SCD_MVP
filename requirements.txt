@@ -1,5 +1,6 @@
 # Core app framework
 streamlit==1.40.1
+rich==13.9.4 
 
 # Data handling
 pandas==2.2.2
