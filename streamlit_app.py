@@ -93,7 +93,8 @@ def save_log(entry: dict):
 # Sidebar
 # -----------------------------
 st.sidebar.title("Smart Sickle Cell Diary")
-page = st.sidebar.radio("Navigate", ["📖 Log Entry", "📊 Dashboard"], index=0)
+page = st.sidebar.radio("Navigate", ["📖 Log Entry", "📊 Dashboard"], key="nav_page")
+st.caption(f"🧭 debug: page = {page!r}")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("RAG Settings")
@@ -127,7 +128,7 @@ if tips:
     with st.expander("Tip source"):
         src_path = rec.get("source") or ""
         filename = os.path.basename(src_path)
-        page = rec.get("page", "?")
+        src_page = rec.get("page", "?")
 
         # Try a few likely locations for the source file
         candidates = [
@@ -155,7 +156,7 @@ if tips:
             )
         else:
             # If we can't read the file, at least show the reference cleanly
-            st.caption(f"[source: {filename} p.{page}] (file not found for download)")
+            st.caption(f"[source: {filename} p.{src_page}] (file not found for download)")
 
 
 # -----------------------------
