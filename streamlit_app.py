@@ -224,23 +224,12 @@ if page == "📖 Log Entry":
             f"""
             🧠 **Helpful Insight Based on Your Log**  
             You reported feeling *{emotion}* with a pain level of **{pain_level}**.  
-            💡 Here are reflective, supportive insights based on your notes and retrieved context.
             """
         )
 
         if triggers_found:
             st.markdown(f"🔍 **Possible Triggers Detected:** {', '.join(triggers_found).title()}")
             st.markdown("💡 You might consider reviewing these patterns over time or discussing them with a provider.")
-
-        with st.expander("What does this mean?"):
-            st.markdown(
-                """
-                These outputs are **reflective suggestions based on common patterns in similar logs**.  
-                They are **not medical advice** and should **not replace your own judgment or your healthcare provider’s input**.  
-                Sharing these results during your next visit may help guide deeper conversation.
-                """
-            )
-        st.info("This is your record. You decide what matters most.")
 
         # --- Transparent RAG output ---
         st.markdown("🧾 **Supportive Suggestion Based on Your Entry:**")
@@ -270,6 +259,16 @@ if page == "📖 Log Entry":
         )
         st.cache_data.clear()
         st.success("Entry saved.")
+        
+        with st.expander("What does this mean?"):
+            st.markdown(
+                """
+                These outputs are **reflective suggestions based on common patterns in similar logs**.  
+                They are **not medical advice** and should **not replace your own judgment or your healthcare provider’s input**.  
+                Sharing these results during your next visit may help guide deeper conversation.
+                """
+            )
+        st.info("This is your record. You decide what matters most.")
 
 
 # -----------------------------
