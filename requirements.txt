@@ -20,6 +20,11 @@ sentence-transformers==2.2.2
 faiss-cpu==1.7.4
 chromadb==0.4.15
 
+# HF stack pins for SBERT 2.2.2
+huggingface-hub==0.14.1
+transformers==4.33.3
+torch==2.1.2
+
 # LLM API
 openai==1.0.0
 
