@@ -16,16 +16,18 @@ tqdm==4.66.5
 # Visualization
 plotly==5.19.0
 
-# RAG & embeddings
+# RAG & embeddings (SBERT 2.x compatible stack)
 sentence-transformers==2.2.2
 faiss-cpu==1.7.4
 chromadb==0.4.15
 
-# HF stack pins for SBERT 2.2.2
-huggingface-hub==0.14.1
-transformers==4.33.3
-tokenizers==0.13.3
-torch==2.1.2
+# --- Hugging Face stack pinned to match SBERT 2.2.2 ---
+huggingface-hub==0.14.1     # provides cached_download
+transformers==4.30.2        # works with hub 0.14.1
+tokenizers==0.13.3          # keeps transformers in the same era
+torch==2.1.2                # CPU wheel; stable on Streamlit Cloud
+filelock==3.12.2            # avoid very new filelock pulls
+fsspec==2023.12.2           # avoid very new fsspec pulls
 
 # LLM API
 openai==1.0.0
