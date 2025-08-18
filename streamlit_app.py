@@ -22,42 +22,39 @@ st.set_page_config(page_title="Smart Sickle Cell Diary", page_icon="🩸", layou
 
 # --- Daily Tip helpers ---
 @st.cache_data
-def _load_tips_records(artifacts_dir: str):
-    import json
-    tips = []
-    path = os.path.join(artifacts_dir, "chunks_tokenized.jsonl")
-    if not os.path.exists(path):
-        return tips
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            for line in f:
-                rec = json.loads(line)
-                src = rec.get("source", "")
-                # Consider anything in a /tips/ folder or filename containing "tips"
-                if "/tips/" in src or os.sep + "tips" + os.sep in src or "tips" in os.path.basename(src).lower():
-                    tips.append({
-                        "text": rec.get("text", ""),
-                        "source": src,
-                        "page": rec.get("page"),
-                        "filename": os.path.basename(src),
-                    })
-    except Exception:
-        return []
-    return tips
+def _get_fixed_tips():
+    return [
+        # Hydration & Nutrition
+        "Stay hydrated: Drink at least 8 cups of water daily.",
+        "Eat iron-rich foods like spinach, beans, and lean meats.",
+        "Include vitamin-rich fruits and vegetables in your meals.",
+        "Limit processed foods and sugary drinks.",
 
-def _get_daily_tip(artifacts_dir: str, max_chars: int = 220) -> str:
-    tips = _load_tips_records(artifacts_dir)
+        # Lifestyle & Activity
+        "Balance rest with light exercise to maintain circulation.",
+        "Practice deep breathing or relaxation exercises daily.",
+        "Avoid extreme temperatures to reduce pain crises.",
+        "Dress appropriately for weather changes to prevent cold-related pain.",
+
+        # Symptom Tracking & Medical Care
+        "Track your symptoms daily to notice patterns early.",
+        "Take medications exactly as prescribed.",
+        "Schedule and attend regular medical check-ups.",
+        "Keep an emergency plan ready for pain crises.",
+
+        # Emotional & Social Wellbeing
+        "Share how you’re feeling with trusted friends or family.",
+        "Join a support group for people living with SCD.",
+        "Engage in hobbies that bring you joy and relaxation.",
+        "Practice gratitude by writing down one positive thing each day."
+    ]
+
+def _get_daily_tip() -> str:
+    tips = _get_fixed_tips()
     if not tips:
         return ""
-    from datetime import date
-    import random
-    seed = date.today().isoformat()
-    rng = random.Random(seed)
-    rec = rng.choice(tips)
-    txt = (rec.get("text") or "").strip().replace("\n", " ")
-    if len(txt) > max_chars:
-        txt = txt[:max_chars].rstrip() + "…"
-    return txt
+    rng = random.Random(date.today().isoformat())
+    return rng.choice(tips)
 
 # -----------------------------
 # Data helpers
@@ -110,54 +107,12 @@ st.sidebar.caption("Set OPENAI_API_KEY to enable generation.")
 rag = get_rag_helper(artifacts_dir=artifacts_dir)
 
 # --- Daily Tip banner (top of app) ---
-tips = _load_tips_records(artifacts_dir)
-if tips:
-    from datetime import date
-    import random, io
-    
-    rng = random.Random(date.today().isoformat())
-    rec = rng.choice(tips)  # Pick one deterministically for today
-
-    # Prepare the tip text
-    tip_text = (rec.get("text") or "").strip().replace("\n", " ")
-    if len(tip_text) > max_chars:
-        tip_text = tip_text[:max_chars].rstrip() + "…"
-
-    # Show tip and source
+tip_text = _get_daily_tip()
+if tip_text:
     st.info(f"💡 **Daily Tip:** {tip_text}")
-    with st.expander("Tip source"):
-        src_path = rec.get("source") or ""
-        filename = os.path.basename(src_path)
-        src_page = rec.get("page", "?")
-
-        # Try a few likely locations for the source file
-        candidates = [
-            src_path,  # as recorded in metadata
-            os.path.join(os.getcwd(), src_path),
-            os.path.join("knowledge_base", os.path.basename(src_path)),  
-        ]
-        file_bytes = None
-        for p in candidates:
-            if p and os.path.exists(p) and os.path.isfile(p):
-                try:
-                    with open(p, "rb") as fh:
-                        file_bytes = fh.read()
-                    break
-                except Exception:
-                    pass
-
-        if file_bytes:
-            st.caption(f"[source: {filename} p.{page}]")
-            st.download_button(
-                label=f"Download {filename}",
-                data=file_bytes,
-                file_name=filename,
-                mime="application/pdf" if filename.lower().endswith(".pdf") else "application/octet-stream",
-            )
-        else:
-            # If we can't read the file, at least show the reference cleanly
-            st.caption(f"[source: {filename} p.{src_page}] (file not found for download)")
-
+    if use_llm:
+        with st.expander("Tip source"):
+            st.caption("This tip is from a fixed wellness tips list curated for SCD self-care.")
 
 # -----------------------------
 # Log Entry Page
@@ -175,9 +130,8 @@ if page == "📖 Log Entry":
         with colC:
             gender = st.selectbox("Gender", ["Male", "Female"])  # extend as needed
 
-        symptoms = st.selectbox(
-            "Main Symptom",
-            [
+        # --- Multi-select for symptoms with 'Other' option ---
+        default_symptoms = [
                 "muscle cramps and joint pain",
                 "pain in the chest and shortness of breath",
                 "frequent episodes of joint pain",
@@ -197,11 +151,41 @@ if page == "📖 Log Entry":
                 "headaches and anxiety",
                 "painful episodes triggered by stress",
                 "anemia and leg pain",
+                "Other"
             ],
-        )
-        pain_level = st.slider("Self-Reported Pain Level (1 = None, 10 = Extreme)", 1, 10, 5)
-        emotion    = st.selectbox("Self-Reported Emotion", ["Anxious", "Tired", "Neutral", "Sad", "Angry", "Happy"], index=2)
+        
+        if "symptom_options" not in st.session_state:
+            st.session_state.symptom_options = default_symptoms.copy()
 
+        selected_symptoms = st.multiselect(
+            "Select Symptoms",
+            options=st.session_state.symptom_options,
+        )
+
+        if "Other" in selected_symptoms:
+            new_symptom = st.text_input("Add a new symptom (if not listed)")
+            if new_symptom and new_symptom not in st.session_state.symptom_options:
+                st.session_state.symptom_options.insert(-1, new_symptom)
+                st.success(f"Added new symptom: {new_symptom}")
+                
+        pain_level = st.slider("Self-Reported Pain Level (1 = None, 10 = Extreme)", 1, 10, 5)
+        # --- Multi-select for emotions with 'Other' option ---
+        default_emotions = ["Anxious", "Tired", "Neutral", "Sad", "Angry", "Happy", "Other"]
+        if "emotion_options" not in st.session_state:
+            st.session_state.emotion_options = default_emotions.copy()
+
+        selected_emotions = st.multiselect(
+            "Select Emotions",
+            options=st.session_state.emotion_options,
+            default=["Neutral"]
+        )
+
+        if "Other" in selected_emotions:
+            new_emotion = st.text_input("Add a new emotion (if not listed)")
+            if new_emotion and new_emotion not in st.session_state.emotion_options:
+                st.session_state.emotion_options.insert(-1, new_emotion)
+                st.success(f"Added new emotion: {new_emotion}")
+                
         submitted = st.form_submit_button("Submit")
         
     if submitted:
@@ -223,7 +207,7 @@ if page == "📖 Log Entry":
         st.markdown(
             f"""
             🧠 **Helpful Insight Based on Your Log**  
-            You reported feeling *{emotion}* with a pain level of **{pain_level}**.  
+            You reported feeling *{', '.join([e for e in selected_emotions if e != 'Other'])}* with a pain level of **{pain_level}**.  
             """
         )
 
@@ -249,9 +233,9 @@ if page == "📖 Log Entry":
                 "age": age,
                 "pain_location": pain_location,
                 "gender": gender,
-                "symptoms": symptoms,
+                "symptoms": ", ".join([s for s in selected_symptoms if s != "Other"]),
                 "pain_level": pain_level,   # actual
-                "emotion": emotion,         # actual
+                "emotion": ", ".join([e for e in selected_emotions if e != "Other"]),         # actual
                 "detected_triggers": ", ".join(triggers_found) if triggers_found else "",
                 "rag_insight": rag_insight,
                 "rag_sources": " || ".join(source_docs) if show_sources and source_docs else "",
@@ -260,15 +244,16 @@ if page == "📖 Log Entry":
         st.cache_data.clear()
         st.success("Entry saved.")
         
-        with st.expander("What does this mean?"):
-            st.markdown(
-                """
-                These outputs are **reflective suggestions based on common patterns in similar logs**.  
-                They are **not medical advice** and should **not replace your own judgment or your healthcare provider’s input**.  
-                Sharing these results during your next visit may help guide deeper conversation.
-                """
-            )
-        st.info("This is your record. You decide what matters most.")
+        if use_llm:
+            with st.expander("What does this mean?"):
+                st.markdown(
+                    """
+                    These outputs are **reflective suggestions based on common patterns in similar logs**.  
+                    They are **not medical advice** and should **not replace your own judgment or your healthcare provider’s input**.  
+                    Sharing these results during your next visit may help guide deeper conversation.
+                    """
+                )
+            st.info("This is your record. You decide what matters most.")
 
 
 # -----------------------------
@@ -346,17 +331,70 @@ elif page == "📊 Dashboard":
                 mask &= logs_df.get("pain_level").isin(pain_sel)
 
             results = logs_df[mask].sort_values("timestamp", ascending=False)
-
-            # Compact cards with expanders
             st.caption(f"Showing {len(results)} of {len(logs_df)} entries after filters.")
-            for _, row in results.iterrows():
-                header = f"{row['timestamp'].strftime('%Y-%m-%d %H:%M')} — {row.get('emotion','?')} | Pain {row.get('pain_level','?')}"
-                with st.expander(header):
-                    st.markdown(f"**Insight:** {row.get('rag_insight','')}")
-                    st.markdown(f"**Notes:** {row.get('free_text_notes','')}")
-                    if isinstance(row.get("rag_sources"), str) and row["rag_sources"].strip():
+            
+            # ---------------- Quick Clear Filters Button ----------------
+            if st.button("Clear Filters"):
+                st.experimental_rerun()
+            
+            # ---------------- Paginated Table + Single Detail Pane ----------------
+            results_reset = results.reset_index(drop=True).copy()
+            results_reset["id"] = results_reset.index + 1
+
+            # Table preview columns
+            preview = results_reset.copy()
+            preview["notes_preview"] = preview["free_text_notes"].fillna("").str.slice(0, 120).apply(lambda s: s + ("…" if len(s) == 120 else ""))
+            table_cols = ["id", "timestamp", "emotion", "pain_level", "notes_preview"]
+
+            # Pagination controls
+            colps, colpn = st.columns([1, 2])
+            with colps:
+                page_size = st.selectbox("Per page", [5, 10, 20, 50], index=0)
+            total_pages = max(1, (len(preview) + page_size - 1) // page_size)
+            with colpn:
+                page_num = st.number_input("Page", min_value=1, max_value=total_pages, value=1, step=1)
+
+            start = (page_num - 1) * page_size
+            end = start + page_size
+            page_df = preview.iloc[start:end]
+
+            # Render table
+            st.dataframe(
+                page_df[table_cols].rename(columns={
+                    "id": "ID",
+                    "timestamp": "Timestamp",
+                    "emotion": "Emotion",
+                    "pain_level": "Pain",
+                    "notes_preview": "Notes (preview)"
+                }),
+                use_container_width=True,
+            )
+
+            # Row picker for details within current page
+            def _label_for_row(row):
+                ts = row["timestamp"].strftime("%Y-%m-%d %H:%M") if pd.notnull(row["timestamp"]) else "?"
+                emo = row.get("emotion", "?")
+                pain = row.get("pain_level", "?")
+                return f"{int(row['id'])} — {ts} | {emo} | Pain {pain}"
+
+            if not page_df.empty:
+                options = page_df.apply(_label_for_row, axis=1).tolist()
+                sel_label = st.selectbox("Select an entry to view details", options)
+                sel_id = int(sel_label.split(" — ")[0])
+                detail_row = results_reset.loc[results_reset["id"] == sel_id].iloc[0]
+
+                with st.expander("Entry Details", expanded=True):
+                    st.markdown(f"**Timestamp:** {detail_row['timestamp']}")
+                    st.markdown(f"**Emotion:** {detail_row.get('emotion','')}")
+                    st.markdown(f"**Pain Level:** {detail_row.get('pain_level','')}")
+                    st.markdown(f"**Symptoms:** {detail_row.get('symptoms','')}")
+                    st.markdown(f"**Possible Triggers:** {detail_row.get('detected_triggers','')}")
+                    st.markdown(f"**Insight:** {detail_row.get('rag_insight','')}")
+                    st.markdown(f"**Notes:** {detail_row.get('free_text_notes','')}")
+
+                    if use_llm and isinstance(detail_row.get("rag_sources"), str) and detail_row["rag_sources"].strip():
                         st.markdown("**Sources:**")
-                        for i, src in enumerate(str(row["rag_sources"]).split(" || ")):
+                        for i, src in enumerate(str(detail_row["rag_sources"]).split(" || ")):
                             clipped = src[:max_chars] + ("…" if len(src) > max_chars else "")
                             st.markdown(f"{i+1}. {clipped}")
 
