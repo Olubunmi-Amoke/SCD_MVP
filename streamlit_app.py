@@ -2,7 +2,8 @@
 import streamlit as st
 import os
 import pandas as pd
-from datetime import timedelta
+import random
+from datetime import timedelta, date
 
 from trigger_keywords import detect_triggers
 from visualizations import (
