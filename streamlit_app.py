@@ -153,7 +153,7 @@ if page == "📖 Log Entry":
                 "painful episodes triggered by stress",
                 "anemia and leg pain",
                 "Other"
-            ],
+            ]
         
         if "symptom_options" not in st.session_state:
             st.session_state.symptom_options = default_symptoms.copy()
