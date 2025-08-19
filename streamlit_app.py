@@ -274,37 +274,41 @@ elif page == "📊 Dashboard":
         tab_overview, tab_archive = st.tabs(["📈 Overview", "🧠 Insight Archive"])
 
         with tab_overview:
-            st.subheader("Recent Entries")
-            df_recent = logs_df.sort_values("timestamp", ascending=False).head(5).copy()
+            # Chart window selector for all charts
+            chart_window = st.selectbox("Chart window", ["7d", "30d", "3m"], index=1, key="chart_window")
+            
+            # Recent Entries (respect chart_window)
+            st.subheader(f"Recent Entries (last {chart_window})")
+            df_recent = logs_df.copy()
+            now = pd.Timestamp.now()
+            if chart_window.endswith("d"):
+                df_recent = df_recent[df_recent["timestamp"] >= now - pd.Timedelta(days=int(chart_window[:-1]))]
+            elif chart_window.endswith("w"):
+                df_recent = df_recent[df_recent["timestamp"] >= now - pd.Timedelta(weeks=int(chart_window[:-1]))]
+            elif chart_window.endswith("m"):
+                df_recent = df_recent[df_recent["timestamp"] >= now - pd.Timedelta(days=30 * int(chart_window[:-1]))]
+
+            df_recent = df_recent.sort_values("timestamp", ascending=False).head(5).copy()
             if not use_llm and "rag_sources" in df_recent.columns:
                 df_recent["rag_sources"] = pd.NA
             st.dataframe(df_recent, use_container_width=True)
 
-            # Chart window selector for all charts
-            chart_window = st.selectbox("Chart window", ["7d", "30d", "3m"], index=1, key="chart_window")
-
-            st.subheader("Pain Level Trend")
+            # Charts (all honor chart_window)
+            st.subheader(f"Pain Level Trend (last {chart_window})")
             st.plotly_chart(plot_pain_trend(logs_df, window=chart_window), use_container_width=True)
 
-            st.subheader("Emotion Distribution")
+            st.subheader(f"Emotion Distribution (last {chart_window})")
             st.plotly_chart(plot_emotion_dist(logs_df, window=chart_window), use_container_width=True)
 
-            st.subheader("Average Pain by Emotion")
+            st.subheader(f"Average Pain by Emotion (last {chart_window})")
             st.plotly_chart(plot_pain_by_emotion(logs_df, window=chart_window), use_container_width=True)
 
-            st.subheader("Pain Location vs Emotion")
+            st.subheader(f"Pain Location vs Emotion (last {chart_window})")
             st.plotly_chart(plot_pain_emotion_heatmap(logs_df, window=chart_window), use_container_width=True)
 
             if "detected_triggers" in logs_df.columns and logs_df["detected_triggers"].astype(str).str.len().gt(0).any():
-                st.subheader("Trigger Trends")
-                timeframe = st.radio("Select Timeframe:", ["All", "Last 30 Days", "Last 7 Days"], horizontal=True)
-                now = pd.Timestamp.now()
-                df_time = logs_df.copy()
-                if timeframe == "Last 7 Days":
-                    df_time = df_time[df_time["timestamp"] >= now - timedelta(days=7)]
-                elif timeframe == "Last 30 Days":
-                    df_time = df_time[df_time["timestamp"] >= now - timedelta(days=30)]
-                st.plotly_chart(plot_trigger_trends(df_time), use_container_width=True)
+                st.subheader(f"Trigger Trends (last {chart_window})")
+                st.plotly_chart(plot_trigger_trends(logs_df, window=chart_window), use_container_width=True)
 
         with tab_archive:
             st.subheader("Search Your Insights")
