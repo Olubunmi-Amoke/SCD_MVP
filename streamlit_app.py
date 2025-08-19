@@ -274,41 +274,51 @@ elif page == "📊 Dashboard":
         tab_overview, tab_archive = st.tabs(["📈 Overview", "🧠 Insight Archive"])
 
         with tab_overview:
-            # Chart window selector for all charts
-            chart_window = st.selectbox("Chart window", ["7d", "30d", "3m"], index=1, key="chart_window")
-            
-            # Recent Entries (respect chart_window)
-            st.subheader(f"Recent Entries (last {chart_window})")
-            df_recent = logs_df.copy()
+            # Chart window selector for all charts (now with "All")
+            chart_window = st.selectbox("Chart window", ["7d", "30d", "3m", "All"], index=1, key="chart_window")
+
+            # Compute dynamic window for charts when "All" is selected
             now = pd.Timestamp.now()
-            if chart_window.endswith("d"):
-                df_recent = df_recent[df_recent["timestamp"] >= now - pd.Timedelta(days=int(chart_window[:-1]))]
-            elif chart_window.endswith("w"):
-                df_recent = df_recent[df_recent["timestamp"] >= now - pd.Timedelta(weeks=int(chart_window[:-1]))]
-            elif chart_window.endswith("m"):
-                df_recent = df_recent[df_recent["timestamp"] >= now - pd.Timedelta(days=30 * int(chart_window[:-1]))]
+            span_days = None
+            if not logs_df.empty and "timestamp" in logs_df.columns:
+                earliest = pd.to_datetime(logs_df["timestamp"]).min()
+                if pd.notnull(earliest):
+                    span_days = max(1, (now - earliest).days + 1)
+            window_for_charts = chart_window if chart_window != "All" else (f"{span_days}d" if span_days else "30d")
+
+            # Recent Entries (respect chart_window)
+            st.subheader(f"Recent Entries ({'All' if chart_window=='All' else f'last {chart_window}'})")
+            df_recent = logs_df.copy()
+            if chart_window != "All":
+                if chart_window.endswith("d"):
+                    df_recent = df_recent[df_recent["timestamp"] >= now - pd.Timedelta(days=int(chart_window[:-1]))]
+                elif chart_window.endswith("w"):
+                    df_recent = df_recent[df_recent["timestamp"] >= now - pd.Timedelta(weeks=int(chart_window[:-1]))]
+                elif chart_window.endswith("m"):
+                    df_recent = df_recent[df_recent["timestamp"] >= now - pd.Timedelta(days=30 * int(chart_window[:-1]))]
 
             df_recent = df_recent.sort_values("timestamp", ascending=False).head(5).copy()
             if not use_llm and "rag_sources" in df_recent.columns:
                 df_recent["rag_sources"] = pd.NA
             st.dataframe(df_recent, use_container_width=True)
 
-            # Charts (all honor chart_window)
-            st.subheader(f"Pain Level Trend (last {chart_window})")
-            st.plotly_chart(plot_pain_trend(logs_df, window=chart_window), use_container_width=True)
+            # Charts (all honor chart_window / window_for_charts)
+            st.subheader(f"Pain Level Trend ({'All' if chart_window=='All' else f'last {chart_window}'})")
+            st.plotly_chart(plot_pain_trend(logs_df, window=window_for_charts), use_container_width=True)
 
-            st.subheader(f"Emotion Distribution (last {chart_window})")
-            st.plotly_chart(plot_emotion_dist(logs_df, window=chart_window), use_container_width=True)
+            st.subheader(f"Emotion Distribution ({'All' if chart_window=='All' else f'last {chart_window}'})")
+            st.plotly_chart(plot_emotion_dist(logs_df, window=window_for_charts), use_container_width=True)
 
-            st.subheader(f"Average Pain by Emotion (last {chart_window})")
-            st.plotly_chart(plot_pain_by_emotion(logs_df, window=chart_window), use_container_width=True)
+            st.subheader(f"Average Pain by Emotion ({'All' if chart_window=='All' else f'last {chart_window}'})")
+            st.plotly_chart(plot_pain_by_emotion(logs_df, window=window_for_charts), use_container_width=True)
 
-            st.subheader(f"Pain Location vs Emotion (last {chart_window})")
-            st.plotly_chart(plot_pain_emotion_heatmap(logs_df, window=chart_window), use_container_width=True)
+            st.subheader(f"Pain Location vs Emotion ({'All' if chart_window=='All' else f'last {chart_window}'})")
+            st.plotly_chart(plot_pain_emotion_heatmap(logs_df, window=window_for_charts), use_container_width=True)
 
             if "detected_triggers" in logs_df.columns and logs_df["detected_triggers"].astype(str).str.len().gt(0).any():
-                st.subheader(f"Trigger Trends (last {chart_window})")
-                st.plotly_chart(plot_trigger_trends(logs_df, window=chart_window), use_container_width=True)
+                st.subheader(f"Trigger Trends ({'All' if chart_window=='All' else f'last {chart_window}'})")
+                st.plotly_chart(plot_trigger_trends(logs_df, window=window_for_charts), use_container_width=True)
+
 
         with tab_archive:
             st.subheader("Search Your Insights")
