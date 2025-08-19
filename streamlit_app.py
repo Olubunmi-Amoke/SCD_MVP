@@ -193,16 +193,19 @@ if page == "📖 Log Entry":
         # Trigger detection
         triggers_found = detect_triggers(free_text_notes) or []
 
-        # RAG suggestion (helper handles cost controls)
-        with st.spinner("Generating supportive suggestions..."):
-            rag_insight, source_docs = rag.suggest(
-                free_text_notes,
-                k=k_top,
-                model=llm_model,
-                use_llm=use_llm,
-                show_sources=show_sources,
-                max_chunk_chars=max_chars,
-            )
+        # RAG suggestion (only when LLM is enabled and helper handles cost controls)
+        if use_llm:
+            with st.spinner("Generating supportive suggestions..."):
+                rag_insight, source_docs = rag.suggest(
+                    free_text_notes,
+                    k=k_top,
+                    model=llm_model,
+                    use_llm=use_llm,
+                    show_sources=show_sources,
+                    max_chunk_chars=max_chars,
+                )
+        else:
+            rag_insight, source_docs = "", []
 
         # Insight banner & context
         st.markdown(
@@ -217,10 +220,11 @@ if page == "📖 Log Entry":
             st.markdown("💡 You might consider reviewing these patterns over time or discussing them with a provider.")
 
         # --- Transparent RAG output ---
-        st.markdown("🧾 **Supportive Suggestion Based on Your Entry:**")
-        st.success(rag_insight)
+        if use_llm and rag_insight:
+            st.markdown("🧾 **Supportive Suggestion Based on Your Entry:**")
+            st.success(rag_insight)
 
-        if show_sources and source_docs:
+        if use_llm and show_sources and source_docs:
             with st.expander("🧩 Sources Used"):
                 for i, src in enumerate(source_docs):
                     clipped = src[:max_chars] + ("..." if len(src) > max_chars else "")
@@ -238,8 +242,8 @@ if page == "📖 Log Entry":
                 "pain_level": pain_level,   # actual
                 "emotion": ", ".join([e for e in selected_emotions if e != "Other"]),         # actual
                 "detected_triggers": ", ".join(triggers_found) if triggers_found else "",
-                "rag_insight": rag_insight,
-                "rag_sources": " || ".join(source_docs) if show_sources and source_docs else "",
+                "rag_insight": rag_insight if use_llm else "",
+                "rag_sources": " || ".join(source_docs) if (use_llm and show_sources and source_docs) else "",
             }
         )
         st.cache_data.clear()
@@ -271,19 +275,25 @@ elif page == "📊 Dashboard":
 
         with tab_overview:
             st.subheader("Recent Entries")
-            st.dataframe(logs_df.sort_values("timestamp", ascending=False).head(5), use_container_width=True)
+            df_recent = logs_df.sort_values("timestamp", ascending=False).head(5).copy()
+            if not use_llm and "rag_sources" in df_recent.columns:
+                df_recent["rag_sources"] = pd.NA
+            st.dataframe(df_recent, use_container_width=True)
+
+            # Chart window selector for all charts
+            chart_window = st.selectbox("Chart window", ["7d", "30d", "3m"], index=1, key="chart_window")
 
             st.subheader("Pain Level Trend")
-            st.plotly_chart(plot_pain_trend(logs_df), use_container_width=True)
+            st.plotly_chart(plot_pain_trend(logs_df, window=chart_window), use_container_width=True)
 
             st.subheader("Emotion Distribution")
-            st.plotly_chart(plot_emotion_dist(logs_df), use_container_width=True)
+            st.plotly_chart(plot_emotion_dist(logs_df, window=chart_window), use_container_width=True)
 
             st.subheader("Average Pain by Emotion")
-            st.plotly_chart(plot_pain_by_emotion(logs_df), use_container_width=True)
+            st.plotly_chart(plot_pain_by_emotion(logs_df, window=chart_window), use_container_width=True)
 
             st.subheader("Pain Location vs Emotion")
-            st.plotly_chart(plot_pain_emotion_heatmap(logs_df), use_container_width=True)
+            st.plotly_chart(plot_pain_emotion_heatmap(logs_df, window=chart_window), use_container_width=True)
 
             if "detected_triggers" in logs_df.columns and logs_df["detected_triggers"].astype(str).str.len().gt(0).any():
                 st.subheader("Trigger Trends")
@@ -300,43 +310,55 @@ elif page == "📊 Dashboard":
             st.subheader("Search Your Insights")
 
             # --- Search & Filters  ---
-            keyword = st.text_input("Search by keyword (insights, sources, or notes)")
+            keyword = st.text_input(
+                "Search by keyword (insights, sources, or notes)",
+                key="archive_keyword",)
+            
             ts_min = logs_df["timestamp"].min() if not logs_df["timestamp"].isna().all() else pd.Timestamp.now()
             ts_max = logs_df["timestamp"].max() if not logs_df["timestamp"].isna().all() else pd.Timestamp.now()
 
             c1, c2, c3, c4 = st.columns([1, 1, 1, 1])
             with c1:
-                start_date = st.date_input("Start Date", value=ts_min.date())
+                start_date = st.date_input("Start Date", value=ts_min.date(), key="archive_start")
             with c2:
-                end_date = st.date_input("End Date", value=ts_max.date())
+                end_date = st.date_input("End Date", value=ts_max.date(), key="archive_end")
             with c3:
                 emos = logs_df.get("emotion", pd.Series(dtype=str)).dropna().unique().tolist()
-                emo_sel = st.multiselect("Emotion", options=sorted(emos) if emos else [])
+                emo_sel = st.multiselect("Emotion", options=sorted(emos) if emos else [], key="archive_emos")
             with c4:
                 pains = logs_df.get("pain_level", pd.Series(dtype=float)).dropna().unique().tolist()
                 pains_sorted = sorted({int(p) for p in pains}) if pains else []
-                pain_sel = st.multiselect("Pain Level", options=pains_sorted)
+                pain_sel = st.multiselect("Pain Level", options=pains_sorted, key="archive_pains")
+                
+            # --- Clear Filters ---
+            if st.button("Clear Filters"):
+                st.session_state["archive_keyword"] = ""
+                st.session_state["archive_start"] = ts_min.date()
+                st.session_state["archive_end"] = ts_max.date()
+                st.session_state["archive_emos"] = []
+                st.session_state["archive_pains"] = []
+                st.session_state["archive_page"] = 1
+                st.session_state["archive_page_size"] = 5
+                st.rerun()
+
 
             mask = (logs_df["timestamp"].dt.date >= start_date) & (logs_df["timestamp"].dt.date <= end_date)
 
-            if keyword:
+            if st.session_state["archive_keyword"]:
+                k = st.session_state["archive_keyword"]
                 mask &= (
-                    logs_df["rag_insight"].fillna("").str.contains(keyword, case=False)
-                    | logs_df["rag_sources"].fillna("").str.contains(keyword, case=False)
-                    | logs_df["free_text_notes"].fillna("").str.contains(keyword, case=False)
-                )
-
-            if emo_sel:
-                mask &= logs_df.get("emotion").isin(emo_sel)
-            if pain_sel:
-                mask &= logs_df.get("pain_level").isin(pain_sel)
+                    logs_df["rag_insight"].fillna("").str.contains(k, case=False)
+                    | logs_df["rag_sources"].fillna("").str.contains(k, case=False)
+                    | logs_df["free_text_notes"].fillna("").str.contains(k, case=False)
+            )
+                
+            if st.session_state["archive_emos"]:
+                mask &= logs_df.get("emotion").isin(st.session_state["archive_emos"])
+            if st.session_state["archive_pains"]:
+                mask &= logs_df.get("pain_level").isin(st.session_state["archive_pains"])
 
             results = logs_df[mask].sort_values("timestamp", ascending=False)
             st.caption(f"Showing {len(results)} of {len(logs_df)} entries after filters.")
-            
-            # ---------------- Quick Clear Filters Button ----------------
-            if st.button("Clear Filters"):
-                st.experimental_rerun()
             
             # ---------------- Paginated Table + Single Detail Pane ----------------
             results_reset = results.reset_index(drop=True).copy()
@@ -344,16 +366,21 @@ elif page == "📊 Dashboard":
 
             # Table preview columns
             preview = results_reset.copy()
-            preview["notes_preview"] = preview["free_text_notes"].fillna("").str.slice(0, 120).apply(lambda s: s + ("…" if len(s) == 120 else ""))
+            if not use_llm and "rag_insight" in preview.columns:
+                preview["notes_preview"] = (
+                    preview["free_text_notes"].fillna("").str.slice(0, 120).apply(lambda s: s + ("…" if len(s) == 120 else ""))
+                )
             table_cols = ["id", "timestamp", "emotion", "pain_level", "notes_preview"]
 
             # Pagination controls
             colps, colpn = st.columns([1, 2])
             with colps:
-                page_size = st.selectbox("Per page", [5, 10, 20, 50], index=0)
+                page_size = st.selectbox("Per page", [5, 10, 20, 50], index=0, key="archive_page_size")
             total_pages = max(1, (len(preview) + page_size - 1) // page_size)
             with colpn:
-                page_num = st.number_input("Page", min_value=1, max_value=total_pages, value=1, step=1)
+                page_num = st.number_input("Page", min_value=1, max_value=total_pages, 
+                                           value=st.session_state.get("archive_page", 1), step=1,
+                                           key="archive_page")
 
             start = (page_num - 1) * page_size
             end = start + page_size
@@ -380,7 +407,7 @@ elif page == "📊 Dashboard":
 
             if not page_df.empty:
                 options = page_df.apply(_label_for_row, axis=1).tolist()
-                sel_label = st.selectbox("Select an entry to view details", options)
+                sel_label = st.selectbox("Select an entry to view details", options, key="archive_detail_select")
                 sel_id = int(sel_label.split(" — ")[0])
                 detail_row = results_reset.loc[results_reset["id"] == sel_id].iloc[0]
 
@@ -407,7 +434,9 @@ elif page == "📊 Dashboard":
 
             # Raw logs view (replaces separate 'View Past Logs' page)
             with st.expander("📁 Show Raw Logs (All Columns)"):
-                raw_sorted = logs_df.sort_values("timestamp", ascending=False)
+                raw_sorted = logs_df.sort_values("timestamp", ascending=False).copy()
+                if not use_llm and "rag_sources" in raw_sorted.columns:
+                    raw_sorted["rag_sources"] = pd.NA
                 st.dataframe(raw_sorted, use_container_width=True)
                 full_csv = raw_sorted.to_csv(index=False).encode("utf-8")
                 st.download_button("Download Full Logs CSV", full_csv, "all_logs.csv", "text/csv", key="download-all-logs")
